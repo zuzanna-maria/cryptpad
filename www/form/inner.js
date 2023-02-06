@@ -1826,6 +1826,8 @@ define([
                 var showBars = Boolean(content);
                 var rendered = renderTally(count, empty, showBars);
                 return h('div.cp-charts.cp-bar-table', rendered);
+
+                
             },
             icon: h('i.cptools.cptools-form-list-radio')
         },
@@ -2428,6 +2430,22 @@ define([
                 var rendered = renderTally(count, empty, showBars);
                 return h('div.cp-charts.cp-bar-table', rendered);
             },
+            showCondorcetWinner: function(answers, opts) {
+
+                var _answers = parseAnswers(answers);
+
+                optionArray = []
+                opts.values.forEach(function (option) {
+                    optionArray.push(option.v)
+                })
+                
+                listOfLists = []
+                Object.keys(_answers).forEach(function(a) {
+                    listOfLists.push(_answers[a].msg[Object.keys(_answers[a].msg)[0]])
+                })
+
+            
+            },
             icon: h('i.cptools.cptools-form-list-ordered')
         },
         poll: {
@@ -2782,6 +2800,10 @@ define([
                     content: content,
                     answers: answers
                 });
+
+                if (type == "sort") {
+                    var condorcetWinner = model.showCondorcetWinner(answers, block.opts)
+                }
 
                 var q = h('div.cp-form-block-question', block.q || Messages.form_default);
 
