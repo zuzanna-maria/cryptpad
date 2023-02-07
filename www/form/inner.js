@@ -1,4 +1,5 @@
 define([
+    '../../bower_components/votes/src/index.ts',
     'jquery',
     'json.sortify',
     '/api/config',
@@ -45,6 +46,7 @@ define([
     'css!/bower_components/components-font-awesome/css/font-awesome.min.css',
     'less!/form/app-form.less',
 ], function (
+    Votes,
     $,
     Sortify,
     ApiConfig,
@@ -73,6 +75,7 @@ define([
     Sortable
     )
 {
+    console.log(Votes)
     var APP = window.APP = {
         blocks: {}
     };
@@ -2430,7 +2433,7 @@ define([
                 var rendered = renderTally(count, empty, showBars);
                 return h('div.cp-charts.cp-bar-table', rendered);
             },
-            showCondorcetWinner: function(answers, opts) {
+            showCondorcetWinner: function(answers, opts, uid, method) {
 
                 var _answers = parseAnswers(answers);
 
@@ -2441,9 +2444,142 @@ define([
                 
                 listOfLists = []
                 Object.keys(_answers).forEach(function(a) {
-                    listOfLists.push(_answers[a].msg[Object.keys(_answers[a].msg)[0]])
+                    listOfLists.push(_answers[a].msg[uid])
                 })
 
+                var schulzeMethod = function(optionArray, listOfLists) {
+
+                    function getPermutations(array, size) {
+                        // Creates every possible combination pair of given options
+                        function p(t, i) {
+                            if (t.length === size) {
+                                result.push(t);
+                                result.push(t.slice().reverse())
+                                return;
+                            }
+                            if (i + 1 > array.length) {
+                                return;
+                            }
+                           
+                            p(t.concat(array[i]), i + 1);
+                            p(t, i + 1);
+                        }
+                    
+                        var result = [];
+                        p([], 0);
+                        return result;
+                    }
+                    
+                    
+                    var pairs = getPermutations(optionArray, 2)
+                    var pairDict = {}
+                    
+                    pairs.forEach(function (pair) {                        
+                        pairDict[pair] = 0
+                        listOfLists.forEach(function(optionList) {
+                            if (optionList.indexOf(pair[0]) < optionList.indexOf(pair[1])) {
+                                pairDict[pair] ++
+                            }
+                        })
+                    })
+
+                    var comparePairs = function(optionArray) {
+                    pathDictionary = {}
+                    //Adds winner of each pairwise comparison to path
+                    optionArray.forEach(function(option1) {
+                        optionArray.forEach(function(option2){
+                            if (option1 != option2) {
+                                var key1 = [option1, option2].join()
+                                var key2 = [option2, option1].join()
+                                if (pairDict[key1] > pairDict[key2]) {
+                                    pathDictionary[key1] = pairDict[key1] 
+                                } else if (pairDict[key2] > pairDict[key1]) {
+                                    pathDictionary[key2] = pairDict[key2]
+                                }
+                            }
+                        })
+                    })
+                    return pathDictionary
+                    }
+                    
+                    var findWeakestPath = function(optionArray) {
+                        var pathDictionary = comparePairs(optionArray)
+
+                        //Iterates through paths between two options comparing the weakest edge to current score
+                        optionArray.forEach(function(option1) {
+                            optionArray.forEach(function(option2) {
+                                if (option1 != option2) {
+                                    optionArray.forEach(function(option3){
+                                        if (option1 != option3 && option2 != option3) {
+                                            var key1 = [option2, option3].join()
+                                            var key2 = [option2, option1].join()
+                                            var key3 = [option1, option3].join()
+                                            if (pathDictionary[key1] === undefined) {
+                                                var score = 0
+                                            } else {
+                                                var score = pathDictionary[key1]
+                                            }
+                                            if (pathDictionary[key2] !== undefined) {
+                                                var path1 = pathDictionary[key2] 
+                                            } else {
+                                                var path1 = 0
+                                            }
+                                            if (pathDictionary[key3]) {
+                                                var path2 = pathDictionary[key3] 
+                                            } else {
+                                                var path2 = 0
+                                            }
+                                            var weakestPath = Math.min(path1, path2)
+                                            if (weakestPath > score) {
+                                                pathDictionary[key1] = weakestPath
+                                            }
+                                    }
+                    
+                                })
+                            }
+                        })
+                    })
+                    return pathDictionary
+                    }
+                    
+                    var calculateWinner = function(optionArray) {
+                        var pathDictionary = findWeakestPath(optionArray)
+                        //Calculate scores for each option and select winner
+                        winningMatches = {}
+                        optionArray.forEach(function(option){
+                            winningMatches[option] = 0
+                        })
+                        Object.keys(pathDictionary).forEach(function(pair) {
+                            option1 = pair.split(',')[0]
+                            option2 = pair.split(',')[1]
+                            var reversedPair = pair.split(',').slice().reverse()
+                            if (pathDictionary[pair] > pathDictionary[reversedPair]) {
+                                winningMatches[option1] ++
+                            } else if (pathDictionary[reversedPair] > pathDictionary[pair]) {
+                                winningMatches[option2] ++
+                            }
+                        })
+                        
+                        //Checks for score duplicates (ie. tie)
+                        var ties = Object.values(winningMatches).filter((e, i, a) => a.indexOf(e) !== i) 
+                        
+                        var highestScore = Math.max.apply(null, Object.values(winningMatches))
+                        let condorcetWinner = Object.keys(winningMatches).find(key => winningMatches[key] === highestScore);
+                        if (ties.includes(condorcetWinner)) {
+                            let condorcetWinner = "Tie: no winner"
+                        } 
+
+                        return [condorcetWinner, winningMatches]
+
+                        }
+                    }
+                    
+                if (method == 'schulze') {
+                    var condorcetWinner = schulzeMethod(optionArray, listOfLists)
+                }
+                
+                return condorcetWinner
+                
             
             },
             icon: h('i.cptools.cptools-form-list-ordered')
@@ -2801,10 +2937,33 @@ define([
                     answers: answers
                 });
 
-                if (type == "sort") {
-                    var condorcetWinner = model.showCondorcetWinner(answers, block.opts)
-                }
+                let methodButtons
+                if (summary !== false) {
+                    if (type == "sort") {
+                        var schulzeButton = h('button.btn.btn-secondary', 'Schulze method');
+                        var rankedPairButton = h('button.btn.btn-secondary', 'Ranked Pair method');
+                        methodButtons = h('div.cp-form-block', 'Choose Condorcet winner using: ', schulzeButton, ' ',
+                        rankedPairButton)
+                        $(schulzeButton).click(function() {
+                            var $methodButtons = $(methodButtons)
+                            if ($methodButtons.children().length == 3) {
+                                $methodButtons.children()[2].remove();
+                        }
+                        var showDetailsButton = h('button.btn.btn-secondary', 'Show details')
+                        var resultDiv = h('div', model.showCondorcetWinner(answers, block.opts, uid, 'schulze')[0], showDetailsButton)
+                        $methodButtons.append(resultDiv) 
+                        
+                        $(showDetailsButton).click(function() {
+                                console.log(model.showCondorcetWinner(answers, block.opts, uid, 'schulze')[1])
+                                model.showCondorcetWinner(answers, block.opts, uid, 'schulze')[1].forEach(function(outcome) {
+                                console.log(outcome)
+                                resultDiv.append(outcome)
+                            })
+                        })
+                    }) 
+                    }
 
+                }
                 var q = h('div.cp-form-block-question', block.q || Messages.form_default);
 
 //Messages.form_type_checkbox.form_type_input.form_type_md.form_type_multicheck.form_type_multiradio.form_type_poll.form_type_radio.form_type_sort.form_type_textarea.form_type_section
@@ -2815,7 +2974,10 @@ define([
                     ]),
                     q,
                     h('div.cp-form-block-content', print),
+                    methodButtons
+                    
                 ]);
+                
             });
             $results.empty().append(elements);
             if (header) { $results.prepend(header); }
